@@ -253,11 +253,6 @@ void check_button_level(struct k_work *work_item)
         LOG_PRINTK("single tap detected\n");
         btn_last_event = event;
         notify_tap();
-
-        // Enter the low power mode
-        is_off = true;
-        bt_off();
-        turnoff_all();
     }
 
     // Double tap
@@ -285,6 +280,11 @@ void check_button_level(struct k_work *work_item)
         LOG_PRINTK("long press detected\n");
         btn_last_event = event;
         notify_long_tap();
+
+        // Enter the low power mode
+        is_off = true;
+        bt_off();
+        turnoff_all();
     }
 
     // Releases, one time event
