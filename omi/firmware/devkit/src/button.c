@@ -18,6 +18,7 @@
 LOG_MODULE_REGISTER(button, CONFIG_LOG_DEFAULT_LEVEL);
 
 bool is_off = false;
+bool all_leds_off = false;
 static void button_ccc_config_changed_handler(const struct bt_gatt_attr *attr, uint16_t value);
 static ssize_t button_data_read_characteristic(struct bt_conn *conn,
                                                const struct bt_gatt_attr *attr,
@@ -225,7 +226,7 @@ void check_button_level(struct k_work *work_item)
         if (time_since_last_tap > DOUBLE_TAP_WINDOW) {
             // Window expired, determine the tap type based on count
             if (btn_tap_count == 1) {
-            event = BUTTON_EVENT_SINGLE_TAP;
+                event = BUTTON_EVENT_SINGLE_TAP;
             } else if (btn_tap_count == 2) {
                 event = BUTTON_EVENT_DOUBLE_TAP;
             } else if (btn_tap_count == 3) {
@@ -272,7 +273,10 @@ void check_button_level(struct k_work *work_item)
     if (event == BUTTON_EVENT_QUAD_TAP) {
         LOG_PRINTK("quad tap detected\n");
         btn_last_event = event;
-        
+        all_leds_off = !all_leds_off;
+#ifdef CONFIG_OMI_ENABLE_HAPTIC
+        play_haptic_milli(500);
+#endif
     }
 
     // Long press, one time event

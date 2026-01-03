@@ -44,6 +44,7 @@ bool is_connected = false;
 bool is_charging = false;
 extern bool is_off;
 extern bool usb_charge;
+extern bool all_leds_off;
 static void boot_led_sequence(void)
 {
     // Red blink
@@ -75,7 +76,12 @@ static void boot_led_sequence(void)
 void set_led_state()
 {
     // Recording and connected state - BLUE
-
+    if (all_leds_off){
+        set_led_red(false);
+        set_led_green(false);
+        set_led_blue(false);
+        return;
+    }
     if (usb_charge) {
         is_charging = !is_charging;
         if (is_charging) {
