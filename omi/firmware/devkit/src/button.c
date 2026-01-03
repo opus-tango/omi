@@ -156,13 +156,17 @@ static inline void notify_long_tap()
 #define BUTTON_RELEASED 0
 
 #define TAP_THRESHOLD 300     // 300 ms for single tap
-#define DOUBLE_TAP_WINDOW 600 // 600 ms maximum for double-tap
+#define DOUBLE_TAP_WINDOW 900 // 600 ms maximum for double-tap
+#define TRIPLE_TAP_WINDOW 900 // 900 ms maximum for triple-tap
+#define QUAD_TAP_WINDOW 1200 // 1200 ms maximum for quad-tap
 #define LONG_PRESS_TIME 1000  // 1000 ms for long press
 
 typedef enum {
     BUTTON_EVENT_NONE,
     BUTTON_EVENT_SINGLE_TAP,
     BUTTON_EVENT_DOUBLE_TAP,
+    BUTTON_EVENT_TRIPLE_TAP,
+    BUTTON_EVENT_QUAD_TAP,
     BUTTON_EVENT_LONG_PRESS,
     BUTTON_EVENT_RELEASE
 } ButtonEvent;
@@ -172,6 +176,7 @@ static uint32_t btn_press_start_time;
 static uint32_t btn_release_time;
 static uint32_t btn_last_tap_time;
 static bool btn_is_pressed;
+static uint8_t btn_tap_count = 0;
 
 static u_int8_t btn_last_event = BUTTON_EVENT_NONE;
 
@@ -191,27 +196,49 @@ void check_button_level(struct k_work *work_item)
         btn_is_pressed = false;
         btn_release_time = current_time;
 
-        // Check for double tap
+        // Check for multi-tap (double, triple, quad)
         uint32_t press_duration = (btn_release_time - btn_press_start_time) * BUTTON_CHECK_INTERVAL;
         if (press_duration < TAP_THRESHOLD) {
             if (btn_last_tap_time > 0 &&
-                (current_time - btn_last_tap_time) * BUTTON_CHECK_INTERVAL < DOUBLE_TAP_WINDOW) {
-                event = BUTTON_EVENT_DOUBLE_TAP;
-                btn_last_tap_time = 0; // Reset double-tap / single-tap detection
+                (current_time - btn_last_tap_time) * BUTTON_CHECK_INTERVAL < QUAD_TAP_WINDOW) {
+                // Increment tap count for consecutive taps within the window
+                btn_tap_count++;
+                btn_last_tap_time = current_time;
+
+                // Immediately trigger quad tap when 4 taps are reached
+                if (btn_tap_count >= 4) {
+                    event = BUTTON_EVENT_QUAD_TAP;
+                    btn_tap_count = 0;
+                    btn_last_tap_time = 0;
+                }
             } else {
+                // First tap or tap outside the window - start new sequence
+                btn_tap_count = 1;
                 btn_last_tap_time = current_time;
             }
         }
     }
 
-    // Check for single tap
-    if (btn_state == BUTTON_RELEASED && !btn_is_pressed) {
-        uint32_t press_duration = (btn_release_time - btn_press_start_time) * BUTTON_CHECK_INTERVAL;
-        if (press_duration < TAP_THRESHOLD && btn_last_tap_time > 0 &&
-            (current_time - btn_press_start_time) * BUTTON_CHECK_INTERVAL > TAP_THRESHOLD) {
+    // Check for multi-tap timeout to determine final tap count
+    if (btn_state == BUTTON_RELEASED && !btn_is_pressed && btn_tap_count > 0 && btn_last_tap_time > 0) {
+        uint32_t time_since_last_tap = (current_time - btn_last_tap_time) * BUTTON_CHECK_INTERVAL;
+        if (time_since_last_tap > DOUBLE_TAP_WINDOW) {
+            // Window expired, determine the tap type based on count
+            if (btn_tap_count == 1) {
             event = BUTTON_EVENT_SINGLE_TAP;
+            } else if (btn_tap_count == 2) {
+                event = BUTTON_EVENT_DOUBLE_TAP;
+            } else if (btn_tap_count == 3) {
+                event = BUTTON_EVENT_TRIPLE_TAP;
+            }
+            btn_tap_count = 0;
             btn_last_tap_time = 0;
-        } else if ((current_time - btn_press_start_time) * BUTTON_CHECK_INTERVAL > TAP_THRESHOLD) {
+        }
+    }
+
+    // Check for release after non-tap press (long press release)
+    if (btn_state == BUTTON_RELEASED && !btn_is_pressed && btn_tap_count == 0) {
+        if ((current_time - btn_press_start_time) * BUTTON_CHECK_INTERVAL > TAP_THRESHOLD) {
             event = BUTTON_EVENT_RELEASE;
         }
     }
@@ -240,6 +267,19 @@ void check_button_level(struct k_work *work_item)
         notify_double_tap();
     }
 
+    // Triple tap
+    if (event == BUTTON_EVENT_TRIPLE_TAP) {
+        LOG_PRINTK("triple tap detected\n");
+        btn_last_event = event;
+    }
+
+    // Quad tap
+    if (event == BUTTON_EVENT_QUAD_TAP) {
+        LOG_PRINTK("quad tap detected\n");
+        btn_last_event = event;
+        
+    }
+
     // Long press, one time event
     if (event == BUTTON_EVENT_LONG_PRESS && btn_last_event != BUTTON_EVENT_LONG_PRESS) {
         LOG_PRINTK("long press detected\n");
@@ -258,6 +298,7 @@ void check_button_level(struct k_work *work_item)
         btn_press_start_time = 0;
         btn_release_time = 0;
         btn_last_tap_time = 0;
+        btn_tap_count = 0;
     }
     if (event == BUTTON_EVENT_RELEASE) {
         current_button_state = GRACE;
